@@ -133,19 +133,20 @@
     if (!id) { notFound(main); return; }
     main.innerHTML = '<div class="wrap"><div class="loading">جارٍ التحميل…</div></div>';
     Promise.all([
-      R.dbGet("store/apps/" + id), R.dbGet("store/detail/" + id), R.dbGet("store/shots/" + id),
+      R.dbGet("store/apps/" + id), R.dbGet("store/detail/" + id),
       R.dbGet("store/downloads/" + id), R.loadStore().catch(function () { return null; })
     ]).then(function (r) {
       var a = r[0];
       if (!a || typeof a !== "object" || a.hidden) { notFound(main); return; }
       a.id = id;
-      renderApp(main, a, r[1] || {}, Array.isArray(r[2]) ? r[2] : [], Number(r[3]) || 0, r[4]);
+      renderApp(main, a, r[1] || {}, Number(r[2]) || 0, r[3]);
+      loadShots(a);
     }).catch(function () {
       main.innerHTML = '<section class="section"><div class="wrap"><h2>تعذّر تحميل الصفحة</h2><p class="lead">تحقق من اتصالك بالإنترنت ثم أعد المحاولة.</p><a class="btn btn-primary" href="">إعادة المحاولة</a></div></section>';
     });
   }
 
-  function renderApp(main, a, d, shots, n, store) {
+  function renderApp(main, a, d, n, store) {
     current = a;
     var color = R.safeColor(a.color), fg = R.onColor(color), tint = R.tint(color, 0.9);
     document.title = a.name + " | " + S.name;
@@ -163,11 +164,8 @@
       '<div class="actions">' + dlButton(a, "تنزيل التطبيق", "color:" + (fg === "#FFFFFF" ? color : "#1B2A4A"), "btn-white") +
       '<button class="btn sq" id="shareBtn" type="button" aria-label="مشاركة التطبيق" style="background:rgba(255,255,255,.2);color:' + fg + '">' + ic("share") + "</button></div></div></section>";
 
-    var good = shots.map(R.safeImg).filter(Boolean);
-    if (good.length) {
-      h += section("صور من التطبيق", '<div class="shots">' + good.map(function (s, i) {
-        return '<button class="shot" type="button" data-shot="' + i + '" aria-label="تكبير الصورة ' + (i + 1) + '"><img src="' + s + '" alt="لقطة ' + (i + 1) + " من تطبيق " + esc(a.name) + '" loading="lazy"></button>';
-      }).join("") + "</div>");
+    if (a.ns === undefined || Number(a.ns) > 0) {
+      h += section("صور من التطبيق", '<div id="shotsBox"><div class="shots-wait">جارٍ تحميل الصور…</div></div>');
     }
 
     var about = Array.isArray(d.about) ? d.about : [];
@@ -215,8 +213,44 @@
     }
     h += '<div class="page-end"></div>';
     main.innerHTML = h;
-    current._shots = good;
     layout();
+  }
+
+  function loadShots(a) {
+    var box = $("shotsBox");
+    if (!box) { return; }
+    var slow = setTimeout(function () {
+      var w = box.querySelector(".shots-wait");
+      if (w) { w.textContent = "الاتصال بطيء، الصور في الطريق…"; }
+    }, 8000);
+    var key = "rt_shots_" + a.id + "_" + (a.updated || 0), cached = null;
+    try { cached = JSON.parse(localStorage.getItem(key) || "null"); } catch (e) { cached = null; }
+    var p = cached ? Promise.resolve(cached) : R.dbGet("store/shots/" + a.id);
+    p.then(function (arr) {
+      clearTimeout(slow);
+      var good = (Array.isArray(arr) ? arr : []).map(R.safeImg).filter(Boolean);
+      if (!good.length) {
+        var sec = box.parentNode;
+        if (sec && sec.parentNode) { sec.parentNode.removeChild(sec); }
+        return;
+      }
+      if (!cached) {
+        try {
+          for (var i = localStorage.length - 1; i >= 0; i--) {
+            var k = localStorage.key(i);
+            if (k && k.indexOf("rt_shots_" + a.id + "_") === 0) { localStorage.removeItem(k); }
+          }
+          localStorage.setItem(key, JSON.stringify(good));
+        } catch (e) { /* ignore */ }
+      }
+      current._shots = good;
+      box.innerHTML = '<div class="shots">' + good.map(function (s, i) {
+        return '<button class="shot" type="button" data-shot="' + i + '" aria-label="تكبير الصورة ' + (i + 1) + '"><img src="' + s + '" alt="لقطة ' + (i + 1) + " من تطبيق " + esc(a.name) + '"></button>';
+      }).join("") + "</div>";
+    }).catch(function () {
+      clearTimeout(slow);
+      box.innerHTML = '<div class="shots-wait">تعذّر تحميل الصور. أعد تحميل الصفحة.</div>';
+    });
   }
 
   /* ---------- صفحة سياسة التطبيق ---------- */

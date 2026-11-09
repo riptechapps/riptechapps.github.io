@@ -4,6 +4,7 @@
   var R = window.RT, FB = window.FIREBASE || {}, S = window.SITE || {};
   var esc = R.esc, ic = R.ic, DB = R.DB;
   var root = document.getElementById("adm");
+  document.documentElement.style.scrollBehavior = "auto";
 
   var auth = { idToken: "", refresh: "", exp: 0 };
   var state = { list: [], counts: {}, form: null, busy: false };
@@ -30,9 +31,13 @@
     return "تعذّر تسجيل الدخول (" + (m || "خطأ غير معروف") + ").";
   }
   function setBusy(b) { state.busy = b; Array.prototype.forEach.call(document.querySelectorAll("[data-busy]"), function (n) { n.disabled = b; n.style.opacity = b ? ".6" : ""; }); }
+  var msgTimer = null;
   function msg(kind, text) {
     var m = $("msg");
-    if (m) { m.innerHTML = text ? '<div class="msg ' + kind + '">' + esc(text) + "</div>" : ""; if (text) { m.scrollIntoView({ block: "nearest" }); } }
+    if (!m) { return; }
+    clearTimeout(msgTimer);
+    m.innerHTML = text ? '<div class="msg ' + kind + '">' + esc(text) + "</div>" : "";
+    if (text && kind !== "err") { msgTimer = setTimeout(function () { m.innerHTML = ""; }, 5000); }
   }
 
   /* ========== الدخول ========== */
@@ -115,23 +120,24 @@
   }
   function makeIcon(file) {
     return fileToImage(file).then(function (img) {
-      var side = Math.min(img.width, img.height), out = 192;
+      var side = Math.min(img.width, img.height), out = 160;
       var c = document.createElement("canvas"); c.width = out; c.height = out;
       var g = c.getContext("2d");
       g.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, out, out);
-      var d = c.toDataURL("image/webp", 0.92);
+      var d = c.toDataURL("image/webp", 0.88);
       if (d.indexOf("data:image/webp") !== 0) { d = c.toDataURL("image/png"); }
       return d;
     });
   }
   function makeShot(file) {
     return fileToImage(file).then(function (img) {
-      var w = img.width, h = img.height, k = Math.min(1, 540 / w, 1200 / h);
+      var w = img.width, h = img.height, k = Math.min(1, 400 / w, 900 / h);
       w = Math.round(w * k); h = Math.round(h * k);
       var c = document.createElement("canvas"); c.width = w; c.height = h;
       var g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);
-      var q = 0.8, d = c.toDataURL("image/jpeg", q);
-      while (d.length > 190000 && q > 0.45) { q -= 0.1; d = c.toDataURL("image/jpeg", q); }
+      var type = "image/webp", q = 0.72, d = c.toDataURL(type, q);
+      if (d.indexOf("data:image/webp") !== 0) { type = "image/jpeg"; d = c.toDataURL(type, q); }
+      while (d.length > 90000 && q > 0.4) { q -= 0.08; d = c.toDataURL(type, q); }
       return d;
     });
   }
@@ -207,7 +213,7 @@
       '<div class="hint">تُصغَّر الصور تلقائياً قبل الحفظ.</div></div>' +
 
       '<div class="panel"><h2>التنزيل *</h2><label for="f-apk">رابط ملف التثبيت (من صفحة الإصدارات في جيت هب)</label><input id="f-apk" type="url" dir="ltr" value="' + esc(f.apk) + '" placeholder="https://github.com/...">' +
-      '<label for="f-size">حجم الملف بالميجابايت</label><div class="row2"><input id="f-size" type="number" step="0.01" dir="ltr" value="' + esc(f.sizeMB) + '"><button class="btn btn-dark sm" style="flex:none;min-height:44px" type="button" data-act="fetchsize" data-busy>' + ic("refresh") + "جلب تلقائي</button></div>" +
+      '<label for="f-size">حجم الملف بالميجابايت</label><div class="row2"><input id="f-size" type="number" step="0.0001" dir="ltr" value="' + esc(f.sizeMB) + '"><button class="btn btn-dark sm" style="flex:none;min-height:44px" type="button" data-act="fetchsize" data-busy>' + ic("refresh") + "جلب تلقائي</button></div>" +
       '<div class="hint">الجلب التلقائي يعمل مع روابط جيت هب. وإن فشل اكتب الحجم بيدك.</div></div>' +
 
       '<div class="panel"><h2>التفاصيل</h2><label for="f-about">عن التطبيق (اترك سطراً فارغاً بين الفقرات)</label><textarea id="f-about" style="min-height:130px">' + esc(f.about) + "</textarea>" +
@@ -223,6 +229,15 @@
       '<div class="savebar"><button class="btn btn-gold" type="button" data-act="save" data-busy>حفظ ونشر الآن</button><button class="btn btn-dark" type="button" data-act="cancel">إلغاء</button></div></main>';
     renderShots();
     renderFeats();
+  }
+
+  function setColor(c) {
+    state.form.color = c;
+    var inp = $("f-color");
+    if (inp) { inp.value = c; }
+    Array.prototype.forEach.call(document.querySelectorAll(".sw"), function (n) {
+      n.classList.toggle("on", String(n.getAttribute("data-c")).toLowerCase() === String(c).toLowerCase());
+    });
   }
 
   function renderShots() {
@@ -266,7 +281,7 @@
         about: (Array.isArray(d.about) ? d.about : []).join("\n\n"),
         features: (Array.isArray(d.features) && d.features.length) ? d.features.map(function (f) { return { icon: f.icon || "check", title: f.title || "", text: f.text || "" }; }) : [{ icon: "shield", title: "", text: "" }],
         version: a.version || "", color: R.safeColor(a.color), icon: a.icon || "", shots: Array.isArray(r[2]) ? r[2] : [],
-        apk: a.apk || "", sizeMB: a.size ? (a.size / 1048576).toFixed(2) : "", order: (a.order == null || Number(a.order) <= -1000000) ? "" : Number(a.order), autoOrder: a.order, hidden: !!a.hidden,
+        apk: a.apk || "", sizeMB: a.size ? (a.size / 1048576).toFixed(4) : "", sizeBytes: a.size || 0, order: (a.order == null || Number(a.order) <= -1000000) ? "" : Number(a.order), autoOrder: a.order, hidden: !!a.hidden,
         privacy: p.privacy || "", terms: p.terms || "", created: a.created || Date.now()
       };
       setBusy(false); viewForm();
@@ -298,8 +313,8 @@
       var map = {};
       map["apps/" + id] = {
         name: f.name, kicker: f.kicker, summary: f.summary, version: f.version, color: f.color, icon: f.icon,
-        apk: f.apk, size: Math.round(Number(f.sizeMB) * 1048576), order: (f.order === "" ? (f.autoOrder != null && Number(f.autoOrder) <= -1000000 ? f.autoOrder : -Math.floor(Date.now() / 1000)) : f.order), hidden: !!f.hidden,
-        hp: !!f.privacy.trim(), ht: !!f.terms.trim(), created: f.created, updated: Date.now()
+        apk: f.apk, size: (f.sizeBytes && Math.abs(f.sizeBytes / 1048576 - Number(f.sizeMB)) < 0.0005) ? f.sizeBytes : Math.round(Number(f.sizeMB) * 1048576), order: (f.order === "" ? (f.autoOrder != null && Number(f.autoOrder) <= -1000000 ? f.autoOrder : -Math.floor(Date.now() / 1000)) : f.order), hidden: !!f.hidden,
+        hp: !!f.privacy.trim(), ht: !!f.terms.trim(), ns: f.shots.length, created: f.created, updated: Date.now()
       };
       map["detail/" + id] = { about: about, features: feats };
       map["shots/" + id] = f.shots.length ? f.shots : null;
@@ -312,7 +327,7 @@
     };
     var pre = Promise.resolve();
     if (!(Number(f.sizeMB) > 0) && R.safeUrl(f.apk)) {
-      pre = githubSize(f.apk).then(function (b) { f.sizeMB = (b / 1048576).toFixed(2); }).catch(function () { /* يُطلب الحجم يدوياً */ });
+      pre = githubSize(f.apk).then(function (b) { f.sizeBytes = b; f.sizeMB = (b / 1048576).toFixed(4); }).catch(function () { /* يُطلب الحجم يدوياً */ });
     }
     pre.then(run).catch(function (e) { setBusy(false); msg("err", e.message || "تعذّر الحفظ."); });
   }
@@ -349,6 +364,7 @@
 
   /* ========== الأحداث ========== */
   root.addEventListener("click", function (e) {
+    if (e.target.closest && e.target.closest("#msg .msg")) { msg("", ""); return; }
     var b = e.target.closest ? e.target.closest("[data-act]") : null;
     if (!b || state.busy) { return; }
     var act = b.getAttribute("data-act"), id = b.getAttribute("data-id");
@@ -360,7 +376,7 @@
     else if (act === "delete") { remove(id); }
     else if (act === "cancel") { viewList(); }
     else if (act === "save") { save(); }
-    else if (act === "color") { collect(); state.form.color = b.getAttribute("data-c"); viewForm(); }
+    else if (act === "color") { setColor(b.getAttribute("data-c")); }
     else if (act === "addfeat") { collect(); state.form.features.push({ icon: "check", title: "", text: "" }); renderFeats(); }
     else if (act === "rmfeat") { state.form.features.splice(Number(b.getAttribute("data-i")), 1); if (!state.form.features.length) { state.form.features.push({ icon: "check", title: "", text: "" }); } renderFeats(); }
     else if (act === "rmshot") { state.form.shots.splice(Number(b.getAttribute("data-i")), 1); renderShots(); }
@@ -368,7 +384,7 @@
     else if (act === "tpl-terms") { var t = $("f-terms"); if (!t.value.trim() || window.confirm("استبدال النص الحالي بالقالب؟")) { t.value = TERMS_TEMPLATE; } }
     else if (act === "fetchsize") {
       collect(); setBusy(true); msg("info", "جارٍ قراءة الحجم من جيت هب…");
-      githubSize(state.form.apk).then(function (bytes) { $("f-size").value = (bytes / 1048576).toFixed(2); state.form.sizeMB = $("f-size").value; setBusy(false); msg("ok", "تم جلب الحجم."); })
+      githubSize(state.form.apk).then(function (bytes) { state.form.sizeBytes = bytes; $("f-size").value = (bytes / 1048576).toFixed(4); state.form.sizeMB = $("f-size").value; setBusy(false); msg("ok", "تم جلب الحجم."); })
         .catch(function (err) { setBusy(false); msg("err", err.message); });
     }
   });
@@ -386,7 +402,7 @@
       var row = state.form.features[Number(t.getAttribute("data-fi"))];
       if (row) { row[t.getAttribute("data-k")] = t.value; }
     } else if (t.id === "f-color") {
-      collect(); viewForm();
+      setColor(t.value);
     } else if (t.id === "f-icon" && t.files && t.files[0]) {
       msg("info", "جارٍ تجهيز الأيقونة…");
       makeIcon(t.files[0]).then(function (d) { state.form.icon = d; $("iconprev").innerHTML = '<img src="' + d + '" alt="">'; msg("", ""); })
