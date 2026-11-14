@@ -9,6 +9,7 @@
   var auth = { idToken: "", refresh: "", exp: 0 };
   var state = { list: [], counts: {}, form: null, busy: false };
   var ICON_NAMES = { shield: "حماية", lock: "قفل", bell: "تنبيه", moon: "وضع ليلي", chart: "إحصاءات", wifi: "واي فاي", user: "مستخدم", file: "ملف", search: "بحث", refresh: "تحديث", clock: "وقت", download: "تنزيل", bolt: "سرعة", phone: "جوال", wallet: "محفظة", globe: "شبكة", settings: "إعدادات", check: "صح", chat: "محادثة", image: "صورة" };
+  var MIN_OPTIONS = [["", "غير محدد"], ["5.0", "أندرويد 5.0"], ["6.0", "أندرويد 6.0"], ["7.0", "أندرويد 7.0"], ["8.0", "أندرويد 8.0"], ["9", "أندرويد 9"], ["10", "أندرويد 10"], ["11", "أندرويد 11"], ["12", "أندرويد 12"], ["13", "أندرويد 13"], ["14", "أندرويد 14"]];
   var COLORS = ["#1565C0", "#B26A00", "#1B8A4B", "#8E3FB0", "#C62828", "#00838F", "#37474F"];
 
   var PRIVACY_TEMPLATE = "# ما نجمعه\n[اكتب هنا ما يجمعه التطبيق من بيانات، أو اكتب: لا يجمع هذا التطبيق أي بيانات شخصية.]\n\n# ما لا نجمعه\n- [مثال: جهات الاتصال]\n- [مثال: الموقع]\n\n# الأذونات التي يطلبها التطبيق\n- [اسم الإذن]: [سبب طلبه]\n\n# مدة الاحتفاظ بالبيانات\n[اكتب المدة وكيف تُحذف البيانات]\n\n# التواصل\n[اكتب طريقة التواصل لطلب حذف البيانات أو السؤال عنها]";
@@ -191,7 +192,7 @@
   function emptyForm() {
     return {
       id: "", isNew: true, name: "", kicker: "", summary: "", about: "", features: [{ icon: "shield", title: "", text: "" }],
-      version: "1.0", color: "#1565C0", icon: "", shots: [], apk: "", sizeMB: "", order: "", hidden: false, privacy: "", terms: "", created: Date.now()
+      version: "1.0", color: "#1565C0", icon: "", shots: [], whatsnew: "", minAndroid: "", perms: "", apk: "", sizeMB: "", order: "", hidden: false, privacy: "", terms: "", created: Date.now()
     };
   }
 
@@ -212,12 +213,18 @@
       '<label for="f-shots">لقطات من التطبيق (حتى 6)</label><div class="shotsgrid" id="shotsgrid"></div><input id="f-shots" type="file" accept="image/*" multiple>' +
       '<div class="hint">تُصغَّر الصور تلقائياً قبل الحفظ.</div></div>' +
 
-      '<div class="panel"><h2>التنزيل *</h2><label for="f-apk">رابط ملف التثبيت (من صفحة الإصدارات في جيت هب)</label><input id="f-apk" type="url" dir="ltr" value="' + esc(f.apk) + '" placeholder="https://github.com/...">' +
+      '<div class="panel"><h2>التنزيل *</h2><label for="f-apk">رابط ملف التثبيت (من صفحة الإصدارات في جيت هب)</label><input id="f-apk" type="url" dir="ltr" value="' + esc(f.apk) + '" placeholder="https://github.com/..."><div id="apkwarn"></div>' +
       '<label for="f-size">حجم الملف بالميجابايت</label><div class="row2"><input id="f-size" type="number" step="0.0001" dir="ltr" value="' + esc(f.sizeMB) + '"><button class="btn btn-dark sm" style="flex:none;min-height:44px" type="button" data-act="fetchsize" data-busy>' + ic("refresh") + "جلب تلقائي</button></div>" +
       '<div class="hint">الجلب التلقائي يعمل مع روابط جيت هب. وإن فشل اكتب الحجم بيدك.</div></div>' +
 
       '<div class="panel"><h2>التفاصيل</h2><label for="f-about">عن التطبيق (اترك سطراً فارغاً بين الفقرات)</label><textarea id="f-about" style="min-height:130px">' + esc(f.about) + "</textarea>" +
       '<label>المميزات</label><div id="featlist"></div><button class="btn btn-dark sm" type="button" data-act="addfeat">' + ic("plus") + "إضافة ميزة</button></div>" +
+
+      '<div class="panel"><h2>معلومات إضافية (اختيارية)</h2>' +
+      '<label for="f-whatsnew">ما الجديد في هذا الإصدار (سطر لكل نقطة)</label><textarea id="f-whatsnew">' + esc(f.whatsnew) + "</textarea>" +
+      '<label for="f-min">أقل إصدار أندرويد</label><select id="f-min">' + MIN_OPTIONS.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === f.minAndroid ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select>" +
+      '<label for="f-perms">الأذونات التي يطلبها التطبيق (سطر لكل إذن: الاسم ثم نقطتان ثم السبب)</label><textarea id="f-perms" placeholder="الإشعارات: للتنبيهات">' + esc(f.perms) + "</textarea>" +
+      '<div class="hint">اكتب الأذونات الموجودة فعلاً في تطبيقك فقط. وإن تركت الحقول فارغة لا يظهر قسمها في الصفحة.</div></div>' +
 
       '<div class="panel"><h2>الخصوصية والشروط</h2><label for="f-privacy">سياسة الخصوصية لهذا التطبيق *</label><textarea id="f-privacy" style="min-height:150px">' + esc(f.privacy) + "</textarea>" +
       '<button class="btn btn-dark sm" type="button" data-act="tpl-privacy" style="margin-top:6px">ملء قالب جاهز</button>' +
@@ -229,6 +236,15 @@
       '<div class="savebar"><button class="btn btn-gold" type="button" data-act="save" data-busy>حفظ ونشر الآن</button><button class="btn btn-dark" type="button" data-act="cancel">إلغاء</button></div></main>';
     renderShots();
     renderFeats();
+    apkWarn();
+  }
+
+  function apkOk(u) { return /\.apk$/i.test(String(u || "").split("?")[0].split("#")[0]); }
+  function apkWarn() {
+    var box = $("apkwarn"), inp = $("f-apk");
+    if (!box || !inp) { return; }
+    var v = inp.value.trim();
+    box.innerHTML = (v && !apkOk(v)) ? '<div class="warn">الرابط لا ينتهي بـ <bdi dir="ltr">.apk</bdi>. سمّ الملف باسم ينتهي بـ <bdi dir="ltr">.apk</bdi> (مثل datasaver-1.7.apk) ثم أعد رفعه، وإلا قد لا يفتحه جوال الزبون.</div>' : "";
   }
 
   function setColor(c) {
@@ -263,7 +279,7 @@
     f.name = $("f-name").value.trim(); f.kicker = $("f-kicker").value.trim(); f.summary = $("f-summary").value.trim();
     f.version = $("f-version").value.trim(); f.order = $("f-order").value.trim() === "" ? "" : Number($("f-order").value);
     f.color = $("f-color").value; f.apk = $("f-apk").value.trim(); f.sizeMB = $("f-size").value.trim();
-    f.about = $("f-about").value; f.privacy = $("f-privacy").value; f.terms = $("f-terms").value; f.hidden = $("f-hidden").checked;
+    f.about = $("f-about").value; f.whatsnew = $("f-whatsnew").value; f.minAndroid = $("f-min").value; f.perms = $("f-perms").value; f.privacy = $("f-privacy").value; f.terms = $("f-terms").value; f.hidden = $("f-hidden").checked;
   }
 
   function loadList() {
@@ -281,6 +297,8 @@
         about: (Array.isArray(d.about) ? d.about : []).join("\n\n"),
         features: (Array.isArray(d.features) && d.features.length) ? d.features.map(function (f) { return { icon: f.icon || "check", title: f.title || "", text: f.text || "" }; }) : [{ icon: "shield", title: "", text: "" }],
         version: a.version || "", color: R.safeColor(a.color), icon: a.icon || "", shots: Array.isArray(r[2]) ? r[2] : [],
+        whatsnew: (Array.isArray(d.whatsnew) ? d.whatsnew : []).join("\n"), minAndroid: d.minAndroid || "",
+        perms: (Array.isArray(d.perms) ? d.perms : []).map(function (p) { return p.name + (p.why ? ": " + p.why : ""); }).join("\n"),
         apk: a.apk || "", sizeMB: a.size ? (a.size / 1048576).toFixed(4) : "", sizeBytes: a.size || 0, order: (a.order == null || Number(a.order) <= -1000000) ? "" : Number(a.order), autoOrder: a.order, hidden: !!a.hidden,
         privacy: p.privacy || "", terms: p.terms || "", created: a.created || Date.now()
       };
@@ -306,6 +324,7 @@
     var run = function () {
       var err = validate(f);
       if (err) { msg("err", err); return Promise.resolve(); }
+      if (!apkOk(f.apk) && !window.confirm("رابط التنزيل لا ينتهي بـ .apk. قد لا يفتح الملف في جوال الزبون. هل تريد المتابعة؟")) { return Promise.resolve(); }
       if (!f.shots.length && !window.confirm("لم تضف أي لقطة من التطبيق. سيظهر بدونها. هل تريد المتابعة؟")) { return Promise.resolve(); }
       var id = f.id || ("a" + Date.now().toString(36));
       var feats = f.features.filter(function (x) { return x.title.trim(); }).map(function (x) { return { icon: x.icon, title: x.title.trim(), text: x.text.trim() }; });
@@ -316,7 +335,12 @@
         apk: f.apk, size: (f.sizeBytes && Math.abs(f.sizeBytes / 1048576 - Number(f.sizeMB)) < 0.0005) ? f.sizeBytes : Math.round(Number(f.sizeMB) * 1048576), order: (f.order === "" ? (f.autoOrder != null && Number(f.autoOrder) <= -1000000 ? f.autoOrder : -Math.floor(Date.now() / 1000)) : f.order), hidden: !!f.hidden,
         hp: !!f.privacy.trim(), ht: !!f.terms.trim(), ns: f.shots.length, created: f.created, updated: Date.now()
       };
-      map["detail/" + id] = { about: about, features: feats };
+      var whatsnew = f.whatsnew.split("\n").map(function (x) { return x.trim(); }).filter(Boolean);
+      var perms = f.perms.split("\n").map(function (x) { return x.trim(); }).filter(Boolean).map(function (x) {
+        var i = x.indexOf(":"); if (i < 0) { i = x.indexOf("："); }
+        return i < 0 ? { name: x, why: "" } : { name: x.slice(0, i).trim(), why: x.slice(i + 1).trim() };
+      });
+      map["detail/" + id] = { about: about, features: feats, whatsnew: whatsnew, minAndroid: f.minAndroid, perms: perms };
       map["shots/" + id] = f.shots.length ? f.shots : null;
       map["policy/" + id] = { privacy: f.privacy.trim(), terms: f.terms.trim() };
       setBusy(true); msg("info", "جارٍ الحفظ…");
@@ -391,6 +415,7 @@
 
   root.addEventListener("input", function (e) {
     var t = e.target;
+    if (t.id === "f-apk") { apkWarn(); }
     if (t.getAttribute && t.getAttribute("data-fi") !== null) {
       var row = state.form.features[Number(t.getAttribute("data-fi"))];
       if (row) { row[t.getAttribute("data-k")] = t.value; }
