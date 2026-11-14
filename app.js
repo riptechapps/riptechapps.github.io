@@ -4,6 +4,8 @@
   var R = window.RT, S = window.SITE || {};
   var esc = R.esc, ic = R.ic;
   var current = null;
+  var RM = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  document.documentElement.classList.add("js");
 
   function $(id) { return document.getElementById(id); }
   function param(k) {
@@ -23,6 +25,58 @@
     toast._h = setTimeout(function () { t.classList.remove("show"); }, 3600);
   }
 
+  /* ---------- حركة خفيفة ---------- */
+  var revealIO = null;
+  function initReveal(root) {
+    var items = (root || document).querySelectorAll("[data-reveal]:not(.in)");
+    Array.prototype.forEach.call(items, function (el, i) {
+      if (RM || !("IntersectionObserver" in window)) { el.classList.add("in"); return; }
+      el.style.transitionDelay = ((i % 5) * 70) + "ms";
+      if (!revealIO) {
+        revealIO = new IntersectionObserver(function (entries) {
+          entries.forEach(function (en) {
+            if (en.isIntersecting) { en.target.classList.add("in"); revealIO.unobserve(en.target); }
+          });
+        }, { threshold: 0.12 });
+      }
+      revealIO.observe(el);
+    });
+  }
+  function countUp(el) {
+    var n = Number(el.getAttribute("data-n")) || 0;
+    if (RM || n < 20) { el.textContent = R.fmtNum(n); return; }
+    var t0 = null, dur = 900;
+    function step(ts) {
+      if (!t0) { t0 = ts; }
+      var p = Math.min(1, (ts - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+      el.textContent = R.fmtNum(Math.round(n * e));
+      if (p < 1) { requestAnimationFrame(step); } else { el.textContent = R.fmtNum(n); }
+    }
+    requestAnimationFrame(step);
+  }
+  function initCounters(root) {
+    var els = (root || document).querySelectorAll(".cnt[data-n]");
+    Array.prototype.forEach.call(els, function (el) {
+      if (RM || !("IntersectionObserver" in window)) { el.textContent = R.fmtNum(Number(el.getAttribute("data-n"))); return; }
+      el.textContent = "0";
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) { if (en.isIntersecting) { countUp(el); io.disconnect(); } });
+      }, { threshold: 0.4 });
+      io.observe(el);
+    });
+  }
+  function animateDl(a) {
+    var t = a.querySelector(".t");
+    if (!t || a.getAttribute("data-busy")) { return; }
+    a.setAttribute("data-busy", "1");
+    var label = t.textContent;
+    if (!RM) { a.classList.add("run"); }
+    setTimeout(function () { a.classList.add("ok"); t.textContent = "بدأ التنزيل ✓"; }, RM ? 0 : 1000);
+    setTimeout(function () {
+      a.classList.remove("run"); a.classList.remove("ok"); t.textContent = label; a.removeAttribute("data-busy");
+    }, 3600);
+  }
+
   /* ---------- الهيكل المشترك ---------- */
   function headerHtml() {
     var contact = wa() ? '<a href="index.html#contact">تواصل معنا</a>' : "";
@@ -31,13 +85,13 @@
       '<a class="brand" href="index.html" aria-label="' + esc(S.name) + ' - الصفحة الرئيسية">' + R.logo("dark", 36) + "<span>" + esc(S.name) + "</span></a>" +
       '<button class="menu-btn" id="menuBtn" type="button" aria-label="القائمة" aria-expanded="false" aria-controls="nav">' + ic("menu") + "</button>" +
       '<nav class="nav" id="nav" aria-label="القائمة الرئيسية">' +
-      '<a href="index.html#products">التطبيقات</a><a href="index.html#start">كيف تبدأ</a><a href="index.html#about">من نحن</a>' + contact +
+      '<a href="index.html#products">التطبيقات</a><a href="index.html#start">كيف تبدأ</a><a href="about.html">من نحن</a>' + contact +
       "</nav></div></header>";
   }
   function footerHtml() {
     return '<footer class="site-footer"><div class="wrap foot">' +
       '<a class="brand" href="index.html">' + R.logo("light", 30) + "<span>" + esc(S.name) + "</span></a>" +
-      '<nav aria-label="روابط قانونية"><a href="privacy.html">سياسة الخصوصية</a><a href="terms.html">شروط الاستخدام</a></nav>' +
+      '<nav aria-label="روابط الموقع"><a href="about.html">من نحن</a><a href="privacy.html">سياسة الخصوصية</a><a href="terms.html">شروط الاستخدام</a></nav>' +
       "<span>© " + esc(S.year) + " " + esc(S.name) + " - جميع الحقوق محفوظة</span></div></footer>" +
       '<div class="toast" id="toast" role="status" aria-live="polite"></div>';
   }
@@ -52,6 +106,20 @@
       n.setAttribute("target", "_blank");
       n.setAttribute("rel", "noopener");
     });
+    if (S.floatWhatsApp && has && !$("waFab")) {
+      var fab = document.createElement("a");
+      fab.id = "waFab"; fab.className = "wa-fab"; fab.href = wa("مرحباً، عندي استفسار");
+      fab.target = "_blank"; fab.rel = "noopener"; fab.setAttribute("aria-label", "راسلنا على واتساب");
+      fab.innerHTML = ic("whatsapp");
+      document.body.appendChild(fab);
+      var lastY = window.pageYOffset || 0;
+      window.addEventListener("scroll", function () {
+        var y = window.pageYOffset || 0;
+        if (y > lastY + 8 && y > 200) { fab.classList.add("hide"); }
+        else if (y < lastY - 8 || y <= 200) { fab.classList.remove("hide"); }
+        lastY = y;
+      }, { passive: true });
+    }
   }
 
   /* ---------- مكونات التطبيق ---------- */
@@ -60,9 +128,11 @@
     if (img) { return '<div class="app-icon"><img src="' + img + '" alt=""></div>'; }
     return '<div class="app-icon" aria-hidden="true">' + esc(String(a.name || "؟").charAt(0)) + "</div>";
   }
+  function dlLabel(n) {
+    return n >= 10 ? '<b class="cnt" data-n="' + n + '">' + esc(R.fmtNum(n)) + "</b> تحميل" : "جديد";
+  }
   function metaRow(a, n) {
-    var parts = [];
-    parts.push("<span>" + ic("download") + (n >= 10 ? esc(R.fmtNum(n)) + " تحميل" : "جديد") + "</span>");
+    var parts = ["<span>" + ic("download") + dlLabel(n) + "</span>"];
     if (a.size) { parts.push("<span>" + ic("box") + esc(R.fmtSize(a.size)) + "</span>"); }
     if (a.version) { parts.push("<span>" + ic("tag") + "الإصدار " + esc(a.version) + "</span>"); }
     return '<div class="meta-row">' + parts.join("") + "</div>";
@@ -70,16 +140,16 @@
   function dlButton(a, label, style, cls) {
     var url = R.safeUrl(a.apk);
     if (!url) { return '<span class="btn ' + (cls || "") + '" aria-disabled="true">' + ic("clock") + "قريباً</span>"; }
-    return '<a class="btn ' + (cls || "") + '" style="' + (style || "") + '" href="' + esc(url) + '" download rel="noopener" data-dl="' + esc(a.id) + '" data-ver="' + esc(a.version || "") + '">' + ic("download") + esc(label) + "</a>";
+    return '<a class="btn dl ' + (cls || "") + '" style="' + (style || "") + '" href="' + esc(url) + '" download rel="noopener" data-dl="' + esc(a.id) + '" data-ver="' + esc(a.version || "") + '"><i class="fill"></i><span class="lbl">' + ic("download") + '<span class="t">' + esc(label) + "</span></span></a>";
   }
   function card(a, counts) {
     var color = R.safeColor(a.color), fg = R.onColor(color);
     var n = Number(counts[a.id]) || 0;
-    return '<article class="card"><div class="card-top" style="background:' + color + ";color:" + fg + '">' + iconBox(a) +
+    return '<article class="card" data-reveal><div class="card-top" style="background:' + color + ";color:" + fg + '">' + iconBox(a) +
       "<div><h3>" + esc(a.name) + '</h3><div class="sub">' + esc(a.kicker) + "</div></div></div>" +
       '<div class="card-body"><p>' + esc(a.summary) + "</p>" + metaRow(a, n) +
       '<div class="card-actions">' + dlButton(a, "تنزيل", "background:" + color + ";color:" + fg, "") +
-      '<a class="btn" style="background:' + R.tint(color, 0.88) + ";color:" + (R.onColor(color) === "#FFFFFF" ? color : "#1B2A4A") + '" href="app.html?id=' + encodeURIComponent(a.id) + '">التفاصيل</a></div></div></article>';
+      '<a class="btn" style="background:' + R.tint(color, 0.88) + ";color:" + (fg === "#FFFFFF" ? color : "#1B2A4A") + '" href="app.html?id=' + encodeURIComponent(a.id) + '">التفاصيل</a></div></div></article>';
   }
 
   var PIX = [[0, 0, ""], [1, 0, ""], [2, 0, ""], [0, 1, "w"], [3, 1, ""], [0, 2, "w"], [1, 2, ""], [2, 2, ""], [0, 3, "w"], [2, 3, ""], [0, 4, "w"], [3, 4, "a"]];
@@ -101,7 +171,7 @@
     R.loadStore().then(function (d) {
       var list = R.listFrom(d.apps, false);
       if (!list.length) {
-        grid.style.display = "block";
+        grid.className = "grid"; grid.style.display = "block";
         grid.innerHTML = '<div class="empty">' + pixHtml() +
           "<h3>أول تطبيقاتنا قيد الإعداد</h3><p>نجهّز التطبيقات الأولى لتنزيلها من هنا مباشرة. عد قريباً.</p>" +
           (wa() ? '<a class="btn btn-navy" data-wa data-msg="مرحباً، أريد أن أعرف متى تصدر التطبيقات">' + ic("whatsapp") + "اسألنا عن موعد الإصدار</a>" : "") + "</div>";
@@ -111,10 +181,47 @@
       grid.style.display = "";
       grid.className = "grid" + (list.length === 1 ? " one" : "");
       grid.innerHTML = list.map(function (a) { return card(a, d.downloads); }).join("");
+      initReveal(grid); initCounters(grid);
     }).catch(function () {
       grid.style.display = "block";
       grid.innerHTML = '<div class="empty"><h3>تعذّر تحميل التطبيقات</h3><p>تحقق من اتصالك بالإنترنت ثم أعد المحاولة.</p><button class="btn btn-navy" type="button" id="retryBtn">إعادة المحاولة</button></div>';
     });
+  }
+
+  /* ---------- صفحة من نحن ---------- */
+  function aboutPage() {
+    var A = S.about || {}, m = $("main");
+    if (!m) { return; }
+    document.title = (A.kicker || "من نحن") + " | " + S.name;
+    var h = '<section class="ab-hero"><div class="wrap"><div class="kick">' + esc(A.kicker || "من نحن") + "</div><h1>" + (A.title || []).map(esc).join("<br>") + "</h1><p>" + esc(A.lead || "") + "</p></div></section>";
+    if ((A.story || []).length) {
+      h += '<section class="section"><div class="wrap ab-story" data-reveal>' + A.story.map(function (p) { return "<p>" + esc(p) + "</p>"; }).join("") + "</div></section>";
+    }
+    if ((A.steps || []).length) {
+      h += '<section class="section pale"><div class="wrap"><h2 data-reveal>' + esc(A.stepsTitle || "كيف نعمل") + '</h2><div class="timeline" id="tl" style="margin-top:20px"><span class="line"></span>' +
+        A.steps.map(function (s) { return '<div class="tl-item" data-reveal><i></i><b>' + esc(s.t) + "</b><span>" + esc(s.d) + "</span></div>"; }).join("") + "</div></div></section>";
+    }
+    if ((A.values || []).length) {
+      h += '<section class="section"><div class="wrap"><h2 data-reveal>' + esc(A.valuesTitle || "ما نؤمن به") + '</h2><div class="values" style="margin-top:16px">' +
+        A.values.map(function (v, i) {
+          var icn = R.FEATURE_ICONS.indexOf(v.icon) >= 0 ? v.icon : "check";
+          return '<div class="val b' + (i % 3 + 1) + '" data-reveal>' + ic(icn) + "<b>" + esc(v.t) + "</b><span>" + esc(v.d) + "</span></div>";
+        }).join("") + "</div></div></section>";
+    }
+    if (wa() && A.cta) {
+      h += '<section class="cta"><div class="wrap"><h2>' + esc(A.cta.title || "") + '</h2><p>نرد عليك مباشرة</p><a class="btn btn-navy" data-wa data-msg="مرحباً، عندي سؤال أو فكرة">' + ic("whatsapp") + esc(A.cta.text || "راسلنا") + "</a></div></section>";
+    }
+    m.innerHTML = h;
+    layout();
+    initReveal(m);
+    var tl = $("tl");
+    if (tl) {
+      if (RM || !("IntersectionObserver" in window)) { tl.classList.add("in"); }
+      else {
+        var io = new IntersectionObserver(function (en) { if (en[0].isIntersecting) { tl.classList.add("in"); io.disconnect(); } }, { threshold: 0.2 });
+        io.observe(tl);
+      }
+    }
   }
 
   /* ---------- صفحة التطبيق ---------- */
@@ -124,7 +231,19 @@
       '<a class="btn btn-primary" href="index.html#products">عرض كل التطبيقات</a></div></section>';
   }
   function section(title, inner) {
-    return '<div class="wrap sec-pad"><h2>' + esc(title) + "</h2>" + inner + "</div>";
+    return '<div class="wrap sec-pad" data-reveal><h2>' + esc(title) + "</h2>" + inner + "</div>";
+  }
+  function permIcon(name) {
+    var n = String(name || "");
+    if (/افتراضية|VPN/i.test(n)) { return "shieldlock"; }
+    if (/إشعار|تنبيه/.test(n)) { return "bell"; }
+    if (/استخدام|إحصاء/.test(n)) { return "chart"; }
+    if (/شبكة|إنترنت|اتصال|واي|وايفاي/.test(n)) { return "wifi"; }
+    if (/موقع/.test(n)) { return "globe"; }
+    if (/تخزين|ملفات|صور/.test(n)) { return "file"; }
+    if (/جهات|حسابات/.test(n)) { return "user"; }
+    if (/كاميرا|ميكروفون|صوت|هاتف|جوال/.test(n)) { return "phone"; }
+    return "lock";
   }
 
   function appPage() {
@@ -155,7 +274,7 @@
 
     var chips = '<span class="chip">' + ic("tag") + "الإصدار " + esc(a.version || "") + "</span>";
     if (a.size) { chips += '<span class="chip">' + ic("box") + esc(R.fmtSize(a.size)) + "</span>"; }
-    chips += '<span class="chip">' + ic("download") + (n >= 10 ? esc(R.fmtNum(n)) + " تحميل" : "جديد") + "</span>";
+    chips += '<span class="chip">' + ic("download") + dlLabel(n) + "</span>";
 
     var h = '<section class="app-hero" style="background:' + color + ";color:" + fg + '"><div class="wrap">' +
       '<a class="back" href="index.html#products">' + ic("back") + "كل التطبيقات</a>" +
@@ -178,6 +297,22 @@
       h += section("المميزات", '<div class="feat-list">' + feats.map(function (f) {
         var icn = R.FEATURE_ICONS.indexOf(f.icon) >= 0 ? f.icon : "check";
         return '<div class="feat" style="background:' + tint + '"><div class="fi" style="color:' + color + '">' + ic(icn) + "</div><div><h3>" + esc(f.title) + "</h3><p>" + esc(f.text) + "</p></div></div>";
+      }).join("") + "</div>");
+    }
+
+    var news = Array.isArray(d.whatsnew) ? d.whatsnew.filter(Boolean) : [];
+    if (news.length) {
+      h += section("ما الجديد في الإصدار " + (a.version || ""), '<div class="news">' + news.map(function (t) { return "<div>" + ic("check") + "<span>" + esc(t) + "</span></div>"; }).join("") + "</div>");
+    }
+
+    if (d.minAndroid) {
+      h += section("المتطلبات", '<div class="req">' + ic("phone") + "<div>يعمل على أندرويد <b>" + esc(d.minAndroid) + "</b> فما فوق</div></div>");
+    }
+
+    var perms = Array.isArray(d.perms) ? d.perms.filter(function (p) { return p && p.name; }) : [];
+    if (perms.length) {
+      h += section("الأذونات التي يطلبها التطبيق", '<div class="perms">' + perms.map(function (p) {
+        return '<div class="perm">' + ic(permIcon(p.name)) + "<div><b>" + esc(p.name) + "</b>" + (p.why ? "<span>" + esc(p.why) + "</span>" : "") + "</div></div>";
       }).join("") + "</div>");
     }
 
@@ -209,11 +344,42 @@
     }
 
     if (wa()) {
-      h += '<div class="wrap sec-pad"><a class="btn btn-navy" style="width:100%" data-wa data-msg="' + esc("مرحباً، عندي استفسار عن تطبيق " + a.name) + '">' + ic("whatsapp") + "عندك سؤال؟ راسلنا على واتساب</a></div>";
+      h += '<div class="wrap sec-pad" data-reveal><a class="btn btn-navy" style="width:100%" data-wa data-msg="' + esc("مرحباً، عندي استفسار عن تطبيق " + a.name) + '">' + ic("whatsapp") + "عندك سؤال؟ راسلنا على واتساب</a></div>";
     }
     h += '<div class="page-end"></div>';
     main.innerHTML = h;
     layout();
+    initReveal(main);
+    initCounters(main);
+  }
+
+  /* ---------- معرض اللقطات ---------- */
+  function initGallery(n) {
+    var tr = $("galTrack"), cnt = $("galCount"), dots = $("galDots");
+    if (!tr) { return; }
+    var frames = tr.querySelectorAll(".frame");
+    function update() {
+      var c = tr.getBoundingClientRect(), mid = c.left + c.width / 2, best = 0, bd = 1e9;
+      Array.prototype.forEach.call(frames, function (f, i) {
+        var r = f.getBoundingClientRect(), d = Math.abs(r.left + r.width / 2 - mid);
+        if (d < bd) { bd = d; best = i; }
+      });
+      cnt.textContent = (best + 1) + " / " + n;
+      Array.prototype.forEach.call(dots.children, function (dt, i) { dt.classList.toggle("on", i === best); });
+    }
+    var tick = false;
+    tr.addEventListener("scroll", function () {
+      if (tick) { return; }
+      tick = true;
+      requestAnimationFrame(function () { tick = false; update(); });
+    }, { passive: true });
+    dots.addEventListener("click", function (e) {
+      var d = e.target.closest ? e.target.closest("[data-i]") : null;
+      if (!d) { return; }
+      var f = frames[Number(d.getAttribute("data-i"))];
+      if (f && f.scrollIntoView) { f.scrollIntoView({ inline: "center", block: "nearest", behavior: RM ? "auto" : "smooth" }); }
+    });
+    update();
   }
 
   function loadShots(a) {
@@ -244,9 +410,13 @@
         } catch (e) { /* ignore */ }
       }
       current._shots = good;
-      box.innerHTML = '<div class="shots">' + good.map(function (s, i) {
-        return '<button class="shot" type="button" data-shot="' + i + '" aria-label="تكبير الصورة ' + (i + 1) + '"><img src="' + s + '" alt="لقطة ' + (i + 1) + " من تطبيق " + esc(a.name) + '"></button>';
-      }).join("") + "</div>";
+      var n = good.length;
+      box.innerHTML = '<div class="gal">' + (n > 1 ? '<span class="gal-count" id="galCount" dir="ltr">1 / ' + n + "</span>" : '<span id="galCount" hidden></span>') +
+        '<div class="gal-track" id="galTrack">' + good.map(function (s, i) {
+          return '<button class="frame" type="button" data-shot="' + i + '" aria-label="تكبير الصورة ' + (i + 1) + '"><img src="' + s + '" alt="لقطة ' + (i + 1) + " من تطبيق " + esc(a.name) + '"></button>';
+        }).join("") + "</div>" +
+        '<div class="dots" id="galDots"' + (n > 1 ? "" : " hidden") + ">" + good.map(function (s, i) { return '<i data-i="' + i + '"' + (i === 0 ? ' class="on"' : "") + "></i>"; }).join("") + "</div></div>";
+      initGallery(n);
     }).catch(function () {
       clearTimeout(slow);
       box.innerHTML = '<div class="shots-wait">تعذّر تحميل الصور. أعد تحميل الصفحة.</div>';
@@ -318,6 +488,7 @@
     if (dl) {
       R.countDownload(dl.getAttribute("data-dl"), dl.getAttribute("data-ver"));
       toast("بدأ التنزيل. افتح الملف بعد اكتماله لتثبيته.");
+      animateDl(dl);
     }
     if (t.closest("#shareBtn")) { share(); }
     if (t.closest("#retryBtn")) { home(); }
@@ -338,8 +509,9 @@
   /* ---------- التشغيل ---------- */
   var page = document.body.getAttribute("data-page");
   layout();
-  if (page === "home") { home(); }
+  if (page === "home") { home(); initReveal(document); }
   else if (page === "app") { appPage(); }
+  else if (page === "about") { aboutPage(); }
   else if (page === "policy") { policyPage(); }
   else { policyList(); }
 })();
